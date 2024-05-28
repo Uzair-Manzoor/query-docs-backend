@@ -1,5 +1,5 @@
 # backend/main.py
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 import fitz  # PyMuPDF
 
 app = FastAPI()
@@ -17,6 +17,18 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     # Save document details and extracted text to the database
     return {"filename": file.filename, "text": text}
+
+@app.post("/ask")
+async def ask_question(filename: str, question: str):
+    # Retrieve the document text from the database
+    session = SessionLocal()
+    document = session.query(Document).filter(Document.filename == filename).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Process the question using LangChain/LLamaIndex
+    # For now, return a dummy response
+    return {"answer": "This is a placeholder answer."}
 
 if __name__ == "__main__":
     import uvicorn
