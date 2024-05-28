@@ -1,14 +1,14 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from langchain.chains import LLMChain
-from langchain.llms import OpenAI
+from langchain_openai import OpenAI  # Updated import
 from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
 
 import fitz  # PyMuPDF
 import uvicorn
 
 app = FastAPI()
 
-# Initialize the LLM (e.g., OpenAI GPT)
+# Initialize the LLM / OpenAI GPT
 llm = OpenAI(api_key='openai-api-key', model_name="text-davinci-003")
 
 # Define the prompt template
@@ -19,6 +19,10 @@ prompt_template = PromptTemplate(
 
 # Set up the chain
 qa_chain = LLMChain(llm=llm, prompt=prompt_template)
+
+@app.get("/")
+async def read_root():
+    return {"message": "Welcome to the Query Docs API"}
 
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
@@ -31,14 +35,10 @@ async def upload_pdf(file: UploadFile = File(...)):
     for page_num in range(len(pdf_document)):
         text += pdf_document.load_page(page_num).get_text()
 
-    # In a real application, you would save document details and extracted text to a database
-    # Here we just return the text for simplicity
     return {"filename": file.filename, "text": text}
 
 @app.post("/ask")
 async def ask_question(filename: str = Form(...), question: str = Form(...)):
-    # For simplicity, let's assume the file content is stored in memory
-    # In a real application, you'd fetch the document's text from a database
     try:
         with open(f"uploaded_files/{filename}", "rb") as f:
             pdf_document = fitz.open(stream=f.read(), filetype="pdf")
@@ -48,7 +48,6 @@ async def ask_question(filename: str = Form(...), question: str = Form(...)):
     except Exception as e:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Use LangChain to process the question
     answer = qa_chain.run({"context": text, "question": question})
     return {"answer": answer}
 
