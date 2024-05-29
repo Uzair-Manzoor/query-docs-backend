@@ -1,55 +1,38 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from langchain_openai import OpenAI  # Updated import
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-
-import fitz  # PyMuPDF
-import uvicorn
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import os
 
 app = FastAPI()
 
-# Initialize the LLM / OpenAI GPT
-llm = OpenAI(api_key='openai-api-key', model_name="text-davinci-003")
-
-# Define the prompt template
-prompt_template = PromptTemplate(
-    input_variables=["context", "question"],
-    template="Context: {context}\n\nQuestion: {question}\n\nAnswer:",
+# Allow CORS for all origins, you can restrict this to specific origins as needed
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Set up the chain
-qa_chain = LLMChain(llm=llm, prompt=prompt_template)
-
-@app.get("/")
-async def read_root():
-    return {"message": "Welcome to the Query Docs API"}
+class AskRequest(BaseModel):
+    filename: str
+    question: str
 
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
-    content = await file.read()
-    with open(f"uploaded_files/{file.filename}", "wb") as f:
-        f.write(content)
-
-    pdf_document = fitz.open(f"uploaded_files/{file.filename}")
-    text = ""
-    for page_num in range(len(pdf_document)):
-        text += pdf_document.load_page(page_num).get_text()
-
-    return {"filename": file.filename, "text": text}
+    upload_folder = "uploaded_files"
+    if not os.path.exists(upload_folder):
+        os.makedirs(upload_folder)
+    file_location = os.path.join(upload_folder, file.filename)
+    with open(file_location, "wb") as f:
+        f.write(file.file.read())
+    return {"filename": file.filename}
 
 @app.post("/ask")
-async def ask_question(filename: str = Form(...), question: str = Form(...)):
-    try:
-        with open(f"uploaded_files/{filename}", "rb") as f:
-            pdf_document = fitz.open(stream=f.read(), filetype="pdf")
-        text = ""
-        for page_num in range(len(pdf_document)):
-            text += pdf_document.load_page(page_num).get_text()
-    except Exception as e:
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    answer = qa_chain.run({"context": text, "question": question})
-    return {"answer": answer}
+async def ask_question(request: AskRequest):
+    # Your logic to process the question and return the answer
+    return {"answer": "This is a dummy answer"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
