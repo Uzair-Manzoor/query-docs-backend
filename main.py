@@ -1,43 +1,76 @@
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+import fitz  # PyMuPDF
+import openai
 import os
+from contextlib import asynccontextmanager
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+origins = [
+    "http://localhost",
+    "http://localhost:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup_event():
-    print("Starting up the application...")
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    print("Shutting down the application...")
+class AskRequest(BaseModel):
+    filename: str
+    question: str
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
-    if not os.path.exists("uploads"):
-        os.makedirs("uploads")
-    with open(f"uploads/{file.filename}", "wb") as buffer:
-        buffer.write(await file.read())
-    return {"filename": file.filename}
+    logger.debug("Received file upload request")
+    with open("temp.pdf", "wb") as f:
+        f.write(file.file.read())
+    logger.debug("File saved as temp.pdf")
+    return {"filename": "temp.pdf"}
 
 @app.post("/ask")
-async def ask_question(filename: str = Form(...), question: str = Form(...)):
-    # Dummy implementation of answer generation
-    return {"answer": f"Dummy answer to the question: '{question}' based on file: '{filename}'"}
+async def ask_question(request: AskRequest):
+    logger.debug(f"Received question for file: {request.filename}")
+    pdf_document = fitz.open(request.filename)
+    text = ""
+    for page_num in range(pdf_document.page_count):
+        page = pdf_document.load_page(page_num)
+        text += page.get_text()
+    logger.debug("Extracted text from PDF")
 
-if __name__ == "__main__":
-    import uvicorn
-    import asyncio
+    response = openai.Completion.create(
+        engine="davinci",
+        prompt=request.question + "\n\n" + text,
+        max_tokens=100
+    )
+    answer = response.choices[0].text.strip()
+    logger.debug(f"Received answer from OpenAI: {answer}")
+    return JSONResponse(content={"answer": answer})
 
-    try:
-        uvicorn.run(app, host="127.0.0.1", port=8000)
-    except KeyboardInterrupt:
-        print("Server shutdown successfully")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup code
+    logger.debug("Starting up the application...")
+    yield
+    # Shutdown code
+    logger.debug("Shutting down the application...")
+
+app.router.lifespan = lifespan
+
+@app.get("/")
+async def read_root():
+    logger.debug("Received request to root endpoint")
+    return {"message": "Welcome to QueryDocs Backend!"}
