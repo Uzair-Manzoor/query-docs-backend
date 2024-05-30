@@ -1,11 +1,9 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import os
 
 app = FastAPI()
 
-# Allow CORS for all origins, you can restrict this to specific origins as needed
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,25 +12,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class AskRequest(BaseModel):
-    filename: str
-    question: str
+@app.on_event("startup")
+async def startup_event():
+    print("Starting up the application...")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    print("Shutting down the application...")
 
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
-    upload_folder = "uploaded_files"
-    if not os.path.exists(upload_folder):
-        os.makedirs(upload_folder)
-    file_location = os.path.join(upload_folder, file.filename)
-    with open(file_location, "wb") as f:
-        f.write(file.file.read())
+async def upload_file(file: UploadFile = File(...)):
+    if not os.path.exists("uploads"):
+        os.makedirs("uploads")
+    with open(f"uploads/{file.filename}", "wb") as buffer:
+        buffer.write(await file.read())
     return {"filename": file.filename}
 
 @app.post("/ask")
-async def ask_question(request: AskRequest):
-    # Your logic to process the question and return the answer
-    return {"answer": "This is a dummy answer"}
+async def ask_question(filename: str = Form(...), question: str = Form(...)):
+    # Dummy implementation of answer generation
+    return {"answer": f"Dummy answer to the question: '{question}' based on file: '{filename}'"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import asyncio
+
+    try:
+        uvicorn.run(app, host="127.0.0.1", port=8000)
+    except KeyboardInterrupt:
+        print("Server shutdown successfully")
