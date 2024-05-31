@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 origins = [
     "http://localhost",
     "http://localhost:3000",
-    "https://ask-openai-theta.vercel.app",
+    "https://ask-openai-767y968za-uzairmanzoors-projects.vercel.app/",
 ]
 
 app.add_middleware(
