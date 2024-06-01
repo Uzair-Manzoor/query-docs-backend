@@ -1,6 +1,5 @@
 import logging
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 origins = [
     "http://localhost",
     "http://localhost:3000",
-    "https://ask-openai-767y968za-uzairmanzoors-projects.vercel.app/",
+    "https://ask-openai-d469je5xi-uzairmanzoors-projects.vercel.app/",
 ]
 
 app.add_middleware(
@@ -27,8 +26,7 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-openai.api_key = "openai-key"
-
+openai.api_key = "OPENAI_SECRET_KEY"
 class AskRequest(BaseModel):
     filename: str
     question: str
@@ -56,17 +54,26 @@ async def ask_question(request: AskRequest):
             text += page.get_text()
         logger.info("Extracted text from PDF")
 
-        response = openai.Completion.create(
-            engine="text-davinci-003",
-            prompt=request.question + "\n\n" + text,
-            max_tokens=100
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": f"Extracted text: {text}\n\nQuestion: {request.question}"}
+            ]
         )
-        answer = response.choices[0].text.strip()
+        answer = response.choices[0].message["content"].strip()
         logger.info(f"Received answer from OpenAI: {answer}")
         return JSONResponse(content={"answer": answer})
-    except Exception as e:
+    except openai.error.OpenAIError as e:
         logger.error(f"Error processing question: {str(e)}")
-        return JSONResponse(status_code=500, content={"error": "Internal Server Error"})
+        if isinstance(e, openai.error.RateLimitError):
+            return JSONResponse(status_code=429, content={"error": "Rate limit exceeded. Please try again later."})
+        elif isinstance(e, openai.error.AuthenticationError):
+            return JSONResponse(status_code=401, content={"error": "Authentication error. Please check your API key."})
+        elif isinstance(e, openai.error.InsufficientQuotaError):
+            return JSONResponse(status_code=402, content={"error": "Insufficient quota. Please check your plan and billing details."})
+        else:
+            return JSONResponse(status_code=500, content={"error": "Internal Server Error"})
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
