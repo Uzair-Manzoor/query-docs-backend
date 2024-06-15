@@ -1,5 +1,3 @@
-# Fullstack Internship Assignment
-
 ## Setup Instructions
 
 ### Backend
